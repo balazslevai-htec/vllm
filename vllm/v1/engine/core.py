@@ -64,6 +64,7 @@ from vllm.v1.request import Request, RequestStatus
 from vllm.v1.serial_utils import MsgpackDecoder, MsgpackEncoder
 from vllm.v1.structured_output import StructuredOutputManager
 from vllm.version import __version__ as VLLM_VERSION
+import vllm.envs as envs
 
 logger = init_logger(__name__)
 
@@ -854,13 +855,24 @@ class EngineCoreProc(EngineCore):
 
     def run_busy_loop(self):
         """Core busy loop of the EngineCore."""
-
+        profile_enabled = envs.ENABLE_TRACING_RPD or envs.ENABLE_TRACING_PYTORCH
+        if profile_enabled:
+            profiling_in_progress = False
+            steps = 0
         # Loop until process is sent a SIGINT or SIGTERM
         while True:
+            if profile_enabled and steps == envs.VLLM_TORCH_PROFILER_START_OFFSET:
+                profiling_in_progress = True
+                self.profile(True)
             # 1) Poll the input queue until there is work to do.
             self._process_input_queue()
             # 2) Step the engine core and return the outputs.
             self._process_engine_step()
+            if profile_enabled:
+                steps += 1
+                if steps == envs.VLLM_TORCH_PROFILER_STEPS_NUM + envs.VLLM_TORCH_PROFILER_START_OFFSET:
+                    profiling_in_progress = False
+                    self.profile(False)
 
     def _process_input_queue(self):
         """Exits when an engine step needs to be performed."""

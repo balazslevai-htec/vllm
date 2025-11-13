@@ -87,6 +87,10 @@ if TYPE_CHECKING:
     VLLM_PLUGINS: list[str] | None = None
     VLLM_LORA_RESOLVER_CACHE_DIR: str | None = None
     VLLM_TORCH_PROFILER_DIR: str | None = None
+    ENABLE_TRACING_RPD: bool = False
+    ENABLE_TRACING_PYTORCH: bool = False
+    VLLM_TORCH_PROFILER_STEPS_NUM: int = 200
+    VLLM_TORCH_PROFILER_START_OFFSET: int = 200
     VLLM_TORCH_PROFILER_RECORD_SHAPES: bool = False
     VLLM_TORCH_PROFILER_WITH_PROFILE_MEMORY: bool = False
     VLLM_USE_AOT_COMPILE: bool = False
@@ -815,6 +819,25 @@ environment_variables: dict[str, Callable[[], Any]] = {
             os.path.expanduser(os.getenv("VLLM_TORCH_PROFILER_DIR", "."))
         )
     ),
+    # Enable rpd tracing
+    # ENABLE_TRACING_RPD=1. If not set, torch profiler will
+    # not record shapes.
+    "ENABLE_TRACING_RPD": lambda: bool(
+        os.getenv("ENABLE_TRACING_RPD", "0") != "0"
+    ),
+    # Enable torch profiler 
+    # ENABLE_TRACING_PYTORCH=1. If not set, torch profiler will
+    # not record shapes.
+    "ENABLE_TRACING_PYTORCH": lambda: bool(
+        os.getenv("ENABLE_TRACING_PYTORCH", "0") != "0"
+    ),
+    # VLLM_TORCH_PROFILER_STEPS_NUM how many steps to capture
+    "VLLM_TORCH_PROFILER_STEPS_NUM": lambda: 
+        int(os.getenv("VLLM_TORCH_PROFILER_STEPS_NUM", "200")),
+
+    # VLLM_TORCH_PROFILER_START_OFFSET warm up steps before capture
+    "VLLM_TORCH_PROFILER_START_OFFSET": lambda:
+        int(os.getenv("VLLM_TORCH_PROFILER_STEPS_NUM", "200")),
     # Enable torch profiler to record shapes if set
     # VLLM_TORCH_PROFILER_RECORD_SHAPES=1. If not set, torch profiler will
     # not record shapes.
