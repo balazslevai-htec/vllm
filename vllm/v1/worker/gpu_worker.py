@@ -44,6 +44,8 @@ from vllm.v1.worker.worker_base import WorkerBase
 
 logger = init_logger(__name__)
 
+init_rpd = False
+
 if TYPE_CHECKING:
     from vllm.model_executor.model_loader.tensorizer import TensorizerConfig
     from vllm.v1.core.sched.output import SchedulerOutput
@@ -77,7 +79,40 @@ class Worker(WorkerBase):
 
         # Torch profiler. Enabled and configured through env vars:
         # VLLM_TORCH_PROFILER_DIR=/path/to/save/trace
-        if envs.VLLM_TORCH_PROFILER_DIR:
+        if envs.ENABLE_TRACING_RPD:
+            from rpdTracerControl import rpdTracerControl
+            import time
+
+            global init_rpd
+
+            rpdTracerControl.skipCreate()
+
+            if not init_rpd:
+                init_rpd = True
+                import sqlite3
+
+                from rocpd.schema import RocpdSchema
+                torch_profiler_trace_dir = envs.VLLM_TORCH_PROFILER_DIR
+                trace_file = torch_profiler_trace_dir + "/trace.rpd"
+
+                if os.path.exists(trace_file):
+                    os.remove(trace_file)
+                    print("Removed tracefile")
+                schema = RocpdSchema()
+                print("CREATE DBB")
+                connection = sqlite3.connect(trace_file)
+                schema.writeSchema(connection)
+                connection.commit()
+                del connection
+
+            #torch.distributed.barrier(self.tp_cpu_group)
+            os.environ["RPDT_AUTOSTART"] = "0"
+            os.environ["RPDT_FILENAME"] = trace_file
+            rpdTracerControl.setFilename(name=trace_file, append=True)
+            self.profiler = rpdTracerControl()
+            self.profiler.setPythonTrace(True)
+            self.profile_in_progress = True
+        elif envs.ENABLE_TRACING_PYTORCH:
             torch_profiler_trace_dir = envs.VLLM_TORCH_PROFILER_DIR
             worker_name = f"{vllm_config.instance_id}-rank-{self.rank}"
             logger.info(
@@ -512,13 +547,24 @@ class Worker(WorkerBase):
             raise RuntimeError("Profiler is not enabled.")
         if is_start:
             self.profiler.start()
+            if envs.ENABLE_TRACING_RPD:
+                self.profiler.rangePush("", "rpd profile range", "")
         else:
             self.profiler.stop()
-            # only print profiler results on rank 0
-            if self.local_rank == 0:
-                print(
-                    self.profiler.key_averages().table(sort_by="self_cuda_time_total")
-                )
+            if envs.ENABLE_TRACING_PYTORCH:
+                print(self.profiler.key_averages().table(
+                    sort_by="self_cuda_time_total"))
+            elif envs.ENABLE_TRACING_RPD:
+                self.profiler.rangePop()
+                self.profiler.stop()
+                self.profiler.flush()
+
+                # torch.distributed.barrier(get_tp_group().cpu_group)
+                # tp_rank = get_tp_group().rank_in_group
+                # if tp_rank == 0:
+                #     from sglang.srt.utils.rpd_utils import rpd_to_chrome_trace
+
+                #     rpd_to_chrome_trace("trace.rpd", self.rpd_profile_path)
 
     def execute_dummy_batch(self) -> None:
         self.model_runner._dummy_run(1, uniform_decode=True)
