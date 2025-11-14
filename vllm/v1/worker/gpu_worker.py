@@ -97,18 +97,15 @@ class Worker(WorkerBase):
 
                 if os.path.exists(trace_file):
                     os.remove(trace_file)
-                    print("Removed tracefile")
                 schema = RocpdSchema()
-                print("CREATE DBB")
                 connection = sqlite3.connect(trace_file)
                 schema.writeSchema(connection)
                 connection.commit()
                 del connection
-
-            #torch.distributed.barrier(self.tp_cpu_group)
-            os.environ["RPDT_AUTOSTART"] = "0"
-            os.environ["RPDT_FILENAME"] = trace_file
-            rpdTracerControl.setFilename(name=trace_file, append=True)
+                os.environ["RPDT_AUTOSTART"] = "0"
+                os.environ["RPDT_FILENAME"] = trace_file
+                rpdTracerControl.setFilename(name=trace_file, append=True)
+            
             self.profiler = rpdTracerControl()
             self.profiler.setPythonTrace(True)
             self.profile_in_progress = True
