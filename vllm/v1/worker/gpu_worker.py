@@ -92,7 +92,7 @@ class Worker(WorkerBase):
                 import sqlite3
 
                 from rocpd.schema import RocpdSchema
-                torch_profiler_trace_dir = envs.VLLM_TORCH_PROFILER_DIR
+                torch_profiler_trace_dir = envs.VLLM_RPD_PROFILER_DIR
                 trace_file = torch_profiler_trace_dir + "/trace.rpd"
 
                 if os.path.exists(trace_file):
@@ -547,21 +547,14 @@ class Worker(WorkerBase):
             if envs.ENABLE_TRACING_RPD:
                 self.profiler.rangePush("", "rpd profile range", "")
         else:
-            self.profiler.stop()
-            if envs.ENABLE_TRACING_PYTORCH:
-                print(self.profiler.key_averages().table(
-                    sort_by="self_cuda_time_total"))
-            elif envs.ENABLE_TRACING_RPD:
+            if envs.ENABLE_TRACING_RPD:
                 self.profiler.rangePop()
                 self.profiler.stop()
                 self.profiler.flush()
-
-                # torch.distributed.barrier(get_tp_group().cpu_group)
-                # tp_rank = get_tp_group().rank_in_group
-                # if tp_rank == 0:
-                #     from sglang.srt.utils.rpd_utils import rpd_to_chrome_trace
-
-                #     rpd_to_chrome_trace("trace.rpd", self.rpd_profile_path)
+            elif envs.ENABLE_TRACING_PYTORCH:
+                self.profiler.stop()
+                print(self.profiler.key_averages().table(
+                    sort_by="self_cuda_time_total"))
 
     def execute_dummy_batch(self) -> None:
         self.model_runner._dummy_run(1, uniform_decode=True)
